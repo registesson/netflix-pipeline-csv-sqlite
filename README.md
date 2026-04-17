@@ -47,6 +47,13 @@ Run the pipeline with:
 python main.py
 ```
 
+Run with optional examples and custom paths:
+```bash
+python main.py --show-examples
+python main.py --if-exists append
+python main.py --input data/netflix_titles.csv --cleaned-output outputs/cleaned_data.csv --db data/netflix.db --report outputs/report.json
+```
+
 This will:
 - Load the CSV data
 - Clean and preprocess it
@@ -61,15 +68,20 @@ This will:
 2. **Cleaning** (`pipeline/clean.py`)
    - Drops rows without a title
    - Parses `date_added` as datetime
+   - Validates required columns before processing
    - Removes duplicates based on `title` and `date_added`
 3. **Database Insertion** (`pipeline/db.py`)
    - Inserts the cleaned DataFrame into a SQLite database (`netflix_titles` table)
+   - Supports `--if-exists` mode: `replace`, `append`, or `fail`
    - Provides functions to run custom SQL queries and return results as DataFrames
 4. **Reporting** (`pipeline/report.py`)
    - Generates a JSON report with:
      - Number of titles
      - Number of unique countries
+     - Distribution by type (`Movie`, `TV Show`)
+     - Top 10 countries by number of titles
      - Titles count by release year
+     - Missing rate for `date_added`
 
 ## Example Queries
 
@@ -84,7 +96,7 @@ The pipeline demonstrates how to run example queries on the SQLite database, suc
 - pandas >= 2.0.0
 
 ## Customization
-- To use a different input file, change the `INPUT_PATH` in `main.py`.
+- To use a different input file, use `--input` in `main.py`.
 - To add more cleaning steps, edit `pipeline/clean.py`.
 - To extend reporting, modify `pipeline/report.py`.
 
