@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Rapport Netflix Pipeline</title>
+  <style>
+    body { font-family: Arial, sans-serif; max-width: 960px; margin: 40px auto; color: #222; }
+    h1 { color: #e50914; }
+    h2 { border-bottom: 2px solid #e50914; padding-bottom: 4px; margin-top: 32px; }
+    .stat-grid { display: flex; gap: 24px; flex-wrap: wrap; margin: 16px 0; }
+    .stat-card { background: #f5f5f5; border-radius: 8px; padding: 16px 24px; min-width: 160px; }
+    .stat-card .value { font-size: 2em; font-weight: bold; color: #e50914; }
+    .stat-card .label { font-size: 0.9em; color: #555; }
+    table { border-collapse: collapse; width: 100%; margin-top: 12px; }
+    th { background: #e50914; color: white; padding: 8px 12px; text-align: left; }
+    td { padding: 7px 12px; border-bottom: 1px solid #ddd; }
+    tr:nth-child(even) td { background: #fafafa; }
+    .bar-row { display: flex; align-items: center; gap: 8px; margin: 4px 0; }
+    .bar { background: #e50914; height: 18px; border-radius: 3px; min-width: 2px; }
+    .bar-label { min-width: 80px; font-size: 0.85em; color: #555; }
+    .bar-value { font-size: 0.85em; }
+    footer { margin-top: 40px; font-size: 0.8em; color: #aaa; text-align: center; }
+  </style>
+</head>
+<body>
+  <h1>📊 Rapport Netflix Pipeline</h1>
+  <p>Généré le <strong>{{ generated_at }}</strong></p>
+
+  <h2>Statistiques générales</h2>
+  <div class="stat-grid">
+    <div class="stat-card">
+      <div class="value">{{ nb_titres }}</div>
+      <div class="label">Titres total</div>
+    </div>
+    <div class="stat-card">
+      <div class="value">{{ nb_pays_uniques }}</div>
+      <div class="label">Pays uniques</div>
+    </div>
+    <div class="stat-card">
+      <div class="value">{{ "%.1f"|format(taux_date_added_manquante * 100) }}%</div>
+      <div class="label">Date d'ajout manquante</div>
+    </div>
+  </div>
+
+  <h2>Répartition par type</h2>
+  <table>
+    <tr><th>Type</th><th>Nombre</th></tr>
+    {% for type, count in repartition_par_type.items() %}
+    <tr><td>{{ type }}</td><td>{{ count }}</td></tr>
+    {% endfor %}
+  </table>
+
+  <h2>Top 10 pays</h2>
+  {% set max_country = top_10_pays.values() | max %}
+  {% for country, count in top_10_pays.items() %}
+  <div class="bar-row">
+    <span class="bar-label">{{ country }}</span>
+    <div class="bar" style="width: {{ (count / max_country * 300) | int }}px"></div>
+    <span class="bar-value">{{ count }}</span>
+  </div>
+  {% endfor %}
+
+  <h2>Titres par année de sortie</h2>
+  <table>
+    <tr><th>Année</th><th>Nombre de titres</th></tr>
+    {% for year, count in titres_par_annee.items() %}
+    <tr><td>{{ year }}</td><td>{{ count }}</td></tr>
+    {% endfor %}
+  </table>
+
+  <footer>Data Pipeline CSV → SQLite — MIT License</footer>
+</body>
+</html>
+
