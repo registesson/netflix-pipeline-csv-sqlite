@@ -1,11 +1,16 @@
 import argparse
 import logging
+import os
 from pathlib import Path
+
+from dotenv import load_dotenv
 
 from pipeline.clean import clean_data
 from pipeline.db import insert_to_db, read_from_db
 from pipeline.loader import load_csv
 from pipeline.report import generate_report
+
+load_dotenv()
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
@@ -15,11 +20,11 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="CSV -> nettoyage -> SQLite -> rapport JSON"
     )
-    parser.add_argument("--input", default="data/netflix_titles.csv")
-    parser.add_argument("--cleaned-output", default="outputs/cleaned_data.csv")
-    parser.add_argument("--db", default="data/netflix.db")
-    parser.add_argument("--report", default="outputs/report.json")
-    parser.add_argument("--if-exists", default="replace", choices=["replace", "append", "fail"])
+    parser.add_argument("--input", default=os.getenv("INPUT_PATH", "data/netflix_titles.csv"))
+    parser.add_argument("--cleaned-output", default=os.getenv("CLEANED_OUTPUT", "outputs/cleaned_data.csv"))
+    parser.add_argument("--db", default=os.getenv("DB_PATH", "data/netflix.db"))
+    parser.add_argument("--report", default=os.getenv("REPORT_PATH", "outputs/report.json"))
+    parser.add_argument("--if-exists", default=os.getenv("IF_EXISTS", "replace"), choices=["replace", "append", "fail"])
     parser.add_argument("--show-examples", action="store_true")
     return parser.parse_args()
 
@@ -76,5 +81,3 @@ def run_pipeline(args: argparse.Namespace) -> None:
 
 if __name__ == "__main__":
     run_pipeline(parse_args())
-
-
