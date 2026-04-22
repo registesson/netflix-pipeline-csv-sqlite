@@ -1,0 +1,8 @@
+netflix_pipeline_dbt:
+  target: dev
+  outputs:
+    dev:
+      type: duckdb
+      path: ../data/netflix.duckdb
+      threads: 2
+

@@ -5,5 +5,11 @@ __pycache__/
 .DS_Store
 .idea/
 data/netflix.db
+data/netflix.duckdb
 outputs/
 
+dbt/target/
+dbt/logs/
+dbt/dbt_packages/
+dbt/.user.yml
+dbt/seeds/netflix_titles.csv
