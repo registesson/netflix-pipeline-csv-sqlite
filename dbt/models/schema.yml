@@ -1,0 +1,33 @@
+version: 2
+
+seeds:
+  - name: netflix_titles
+    description: "Cleaned dataset exported by main.py into dbt/seeds/netflix_titles.csv"
+    columns:
+      - name: title
+        tests:
+          - not_null
+      - name: type
+        tests:
+          - accepted_values:
+              arguments:
+                values: ['Movie', 'TV Show']
+
+models:
+  - name: stg_netflix_titles
+    description: "Staging model with casted types and basic normalization"
+    columns:
+      - name: title
+        tests:
+          - not_null
+      - name: release_year
+        tests:
+          - not_null
+  - name: mart_titles_by_country
+    description: "Country level metrics for dashboarding"
+    columns:
+      - name: country
+        tests:
+          - not_null
+          - unique
+
