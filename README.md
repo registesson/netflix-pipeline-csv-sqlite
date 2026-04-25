@@ -16,7 +16,11 @@ data-pipeline-csv-sqlite/
 ├── main.py                # Main entry point to run the data pipeline
 ├── requirements.txt       # Core Python dependencies for the pipeline
 ├── requirements-dbt.txt   # Optional dependencies for dbt (local learning)
+├── requirements-airflow.txt # Optional dependencies for Apache Airflow
 ├── README.md              # Project documentation
+│
+├── dags/
+│   └── netflix_pipeline_dag.py  # DAG Airflow (CSV → SQLite → Rapport)
 │
 ├── data/
 │   ├── netflix_titles.csv # Raw input data (CSV)
@@ -45,7 +49,8 @@ dbt/
     └── schema.yml         # dbt tests and model documentation
 
 scripts/
-└── run_dbt_local.sh       # Tiny runner: pipeline -> dbt seed/run/test
+├── run_dbt_local.sh       # Tiny runner: pipeline -> dbt seed/run/test
+└── setup_airflow.sh       # Installation et configuration d'Apache Airflow
 ```
 
 ## Setup
@@ -143,10 +148,89 @@ The pipeline demonstrates how to run example queries on the SQLite database, suc
 - Movies from 2020 onwards
 - Count of titles from Japan
 
+## Apache Airflow — Orchestration du pipeline
+
+Le DAG Airflow `netflix_pipeline` orchestre les mêmes étapes que `main.py` de façon planifiée et reproductible.
+
+### Structure du DAG
+
+```
+load_csv >> clean_data >> insert_to_db >> generate_report >> summary
+```
+
+| Tâche | Description |
+|---|---|
+| `load_csv` | Vérifie et charge le CSV source |
+| `clean_data` | Nettoie les données et sauvegarde `cleaned_data.csv` |
+| `insert_to_db` | Insère dans SQLite avec mode `IF_EXISTS` configurable |
+| `generate_report` | Génère le rapport JSON et HTML |
+| `summary` | Affiche les métriques (XCom) dans les logs |
+
+### Installation rapide
+
+```bash
+# 1. Installer Airflow avec les contraintes officielles
+AIRFLOW_VERSION=2.9.3
+PYTHON_VERSION=$(python3 --version | cut -d " " -f 2 | cut -d "." -f 1-2)
+CONSTRAINT_URL="https://raw.githubusercontent.com/apache/airflow/constraints-${AIRFLOW_VERSION}/constraints-${PYTHON_VERSION}.txt"
+pip install "apache-airflow==${AIRFLOW_VERSION}" --constraint "${CONSTRAINT_URL}"
+
+# 2. Définir le répertoire Airflow dans le projet
+export AIRFLOW_HOME=$(pwd)/.airflow
+
+# 3. Initialiser la base Airflow et créer un utilisateur
+airflow db migrate
+airflow users create --username admin --password admin \
+    --firstname Admin --lastname Netflix --role Admin --email admin@example.com
+
+# 4. Configurer le dossier dags (dans .airflow/airflow.cfg)
+# Mettre à jour : dags_folder = <chemin_du_projet>/dags
+```
+
+Ou utiliser le script tout-en-un :
+
+```bash
+./scripts/setup_airflow.sh
+```
+
+### Démarrage
+
+Dans deux terminaux distincts :
+
+```bash
+# Terminal 1 — Webserver
+export AIRFLOW_HOME=$(pwd)/.airflow
+airflow webserver --port 8080
+
+# Terminal 2 — Scheduler
+export AIRFLOW_HOME=$(pwd)/.airflow
+airflow scheduler
+```
+
+Interface web : **http://localhost:8080** (login : `admin` / `admin`)
+
+### Variables d'environnement configurables
+
+| Variable | Valeur par défaut |
+|---|---|
+| `INPUT_PATH` | `data/netflix_titles.csv` |
+| `CLEANED_OUTPUT` | `outputs/cleaned_data.csv` |
+| `DB_PATH` | `data/netflix.db` |
+| `REPORT_PATH` | `outputs/report.json` |
+| `IF_EXISTS` | `replace` |
+
+### Exécution manuelle du DAG
+
+```bash
+export AIRFLOW_HOME=$(pwd)/.airflow
+airflow dags trigger netflix_pipeline
+```
+
 ## Requirements
 - Python 3.8+
 - pandas >= 2.0.0
 - Optional dbt track: dbt-core + dbt-duckdb
+- Optional Airflow track: apache-airflow >= 2.9.0
 
 ## Customization
 - To use a different input file, use `--input` in `main.py`.
