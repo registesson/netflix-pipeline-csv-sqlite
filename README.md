@@ -140,6 +140,33 @@ Or run the one-command helper:
 - `mart_titles_by_country`: country-level metrics for analytics/dashboarding.
 - `schema.yml`: basic dbt tests (`not_null`, `accepted_values`, `unique`).
 
+### dbt Tests Added
+
+Recent changes reinforced data quality checks at both staging and mart layers.
+
+- Generic tests in `dbt/models/schema.yml`:
+  - `stg_netflix_titles.show_id`: `not_null`, `unique`
+  - `stg_netflix_titles.type`: `not_null`, `accepted_values` (`Movie`, `TV Show`)
+  - `stg_netflix_titles.release_year`: `not_null`
+  - `mart_titles_by_country.country`: `not_null`, `unique`
+  - `mart_titles_by_country.title_count`, `movie_count`, `tv_show_count`, `min_release_year`, `max_release_year`: `not_null`
+
+- Singular SQL tests in `dbt/tests/`:
+  - `test_stg_release_year_range.sql`: flags rows where `release_year` is outside an expected range (`< 1900` or `> current_year + 1`)
+  - `test_mart_country_counts_consistent.sql`: flags rows where `title_count != movie_count + tv_show_count` or `min_release_year > max_release_year`
+
+Run only the impacted models and tests:
+
+```bash
+cd dbt
+export DBT_PROFILES_DIR=$(pwd)
+dbt seed --full-refresh
+dbt run --select stg_netflix_titles mart_titles_by_country
+dbt test --select stg_netflix_titles mart_titles_by_country
+```
+
+Expected result: all selected tests pass and `dbt test` exits with code `0`.
+
 ## Example Queries
 
 The pipeline demonstrates how to run example queries on the SQLite database, such as:
