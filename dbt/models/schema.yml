@@ -2,57 +2,110 @@ version: 2
 
 seeds:
   - name: netflix_titles
-    description: "Cleaned dataset exported by main.py into dbt/seeds/netflix_titles.csv"
+    description: >
+      Raw Netflix titles dataset loaded as a dbt seed.
+      Exported by main.py after basic cleaning from the source CSV.
     columns:
+      - name: show_id
+        description: "Unique identifier for each title (e.g. s1, s2...)."
       - name: title
+        description: "Title of the Netflix show or movie."
         tests:
           - not_null
       - name: type
+        description: "Content type: Movie or TV Show."
         tests:
           - accepted_values:
               arguments:
                 values: ['Movie', 'TV Show']
+      - name: country
+        description: "Country where the title was produced. May be empty."
+      - name: release_year
+        description: "Year the title was originally released."
+      - name: date_added
+        description: "Date the title was added to Netflix (raw string, e.g. 'January 1, 2020')."
+      - name: listed_in
+        description: "Comma-separated list of genres."
+      - name: description
+        description: "Short synopsis of the title."
 
 models:
   - name: stg_netflix_titles
-    description: "Staging model with casted types and basic normalization"
+    description: >
+      Staging model that casts and normalizes raw Netflix titles from the seed.
+      Text fields are trimmed, release_year is cast to integer, date_added is
+      cast to timestamp (null if unparseable). Rows with null titles are filtered out.
+    meta:
+      owner: "@registesson"
+      domain: "content"
+    tags: ["staging", "netflix"]
     columns:
       - name: show_id
+        description: "Unique identifier for the title, cast to varchar."
         tests:
           - not_null
           - unique
       - name: title
+        description: "Trimmed title of the Netflix show or movie."
         tests:
           - not_null
       - name: type
+        description: "Content type (Movie or TV Show), trimmed."
         tests:
           - not_null
           - accepted_values:
               arguments:
                 values: ['Movie', 'TV Show']
+      - name: country
+        description: "Trimmed country of production. May be empty string if unknown."
       - name: release_year
+        description: "Release year cast to integer."
         tests:
           - not_null
+      - name: date_added
+        description: >
+          Date the title was added to Netflix, cast to timestamp.
+          Null if the source value could not be parsed.
+      - name: listed_in
+        description: "Comma-separated list of genres as provided in the source."
+      - name: description
+        description: "Short synopsis of the title."
+
   - name: mart_titles_by_country
-    description: "Country level metrics for dashboarding"
+    description: >
+      Aggregated country-level metrics for Netflix titles. One row per country.
+      Empty country values from staging are grouped under 'Unknown'.
+      Ordered by total title count descending.
+      Intended for dashboarding and reporting.
+    meta:
+      owner: "@registesson"
+      domain: "content"
+    tags: ["mart", "netflix", "country"]
     columns:
       - name: country
+        description: >
+          Country of production. Empty country values from staging are
+          replaced with 'Unknown'.
         tests:
           - not_null
           - unique
       - name: title_count
+        description: "Total number of titles (movies + TV shows) for this country."
         tests:
           - not_null
       - name: movie_count
+        description: "Number of Movies for this country."
         tests:
           - not_null
       - name: tv_show_count
+        description: "Number of TV Shows for this country."
         tests:
           - not_null
       - name: min_release_year
+        description: "Earliest release year among titles for this country."
         tests:
           - not_null
       - name: max_release_year
+        description: "Most recent release year among titles for this country."
         tests:
           - not_null
-
