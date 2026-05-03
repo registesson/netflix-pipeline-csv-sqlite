@@ -3,6 +3,6 @@ netflix_pipeline_dbt:
   outputs:
     dev:
       type: duckdb
-      path: /Users/registesson/dev/data-pipeline-csv-sqlite/data/netflix.duckdb
+      path: "{{ env_var('DBT_DUCKDB_PATH', '/Users/registesson/dev/data-pipeline-csv-sqlite/data/netflix.duckdb') }}"
       threads: 2
 
