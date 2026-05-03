@@ -35,10 +35,11 @@ models:
       Staging model that casts and normalizes raw Netflix titles from the seed.
       Text fields are trimmed, release_year is cast to integer, date_added is
       cast to timestamp (null if unparseable). Rows with null titles are filtered out.
-    meta:
-      owner: "@registesson"
-      domain: "content"
-    tags: ["staging", "netflix"]
+    config:
+      meta:
+        owner: "@registesson"
+        domain: "content"
+      tags: ["staging", "netflix"]
     columns:
       - name: show_id
         description: "Unique identifier for the title, cast to varchar."
@@ -77,10 +78,11 @@ models:
       Empty country values from staging are grouped under 'Unknown'.
       Ordered by total title count descending.
       Intended for dashboarding and reporting.
-    meta:
-      owner: "@registesson"
-      domain: "content"
-    tags: ["mart", "netflix", "country"]
+    config:
+      meta:
+        owner: "@registesson"
+        domain: "content"
+      tags: ["mart", "netflix", "country"]
     columns:
       - name: country
         description: >

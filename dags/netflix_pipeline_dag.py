@@ -1,17 +1,21 @@
 """
 DAG Airflow - Pipeline Netflix
 CSV → Nettoyage → SQLite → Rapport JSON/HTML
+                → dbt (DuckDB) seed + run
 
 Structure des tâches :
-    load_csv >> clean_data >> insert_to_db >> generate_report
+    load_csv >> clean_data >> insert_to_db     >> generate_report >> summary
+                           >> copy_to_dbt_seed >> dbt_seed >> dbt_run ──────┘
 """
 
 import os
+import shutil
 import sys
 from datetime import datetime, timedelta
 from pathlib import Path
 
-from airflow import DAG
+from airflow import (DAG)
+from airflow.operators.bash import BashOperator
 from airflow.operators.python import PythonOperator
 
 # ── Résolution du répertoire racine du projet ──────────────────────────────────
@@ -26,6 +30,10 @@ CLEANED_OUTPUT  = os.getenv("CLEANED_OUTPUT",  str(PROJECT_ROOT / "outputs" / "c
 DB_PATH         = os.getenv("DB_PATH",         str(PROJECT_ROOT / "data"    / "netflix.db"))
 REPORT_PATH     = os.getenv("REPORT_PATH",     str(PROJECT_ROOT / "outputs" / "report.json"))
 IF_EXISTS       = os.getenv("IF_EXISTS",       "replace")
+
+DBT_DIR         = str(PROJECT_ROOT / "dbt")
+DBT_SEED_PATH   = str(PROJECT_ROOT / "dbt" / "seeds" / "netflix_titles.csv")
+DBT_BIN         = shutil.which("dbt") or "dbt"
 
 # ── Arguments par défaut du DAG ───────────────────────────────────────────────
 DEFAULT_ARGS = {
@@ -89,6 +97,14 @@ def task_generate_report(**context) -> None:
     print(f"[generate_report] Rapport généré → {REPORT_PATH}")
 
 
+def task_copy_to_dbt_seed(**context) -> None:
+    """Copie le CSV nettoyé vers dbt/seeds/ pour alimenter le seed dbt."""
+    import shutil
+    Path(DBT_SEED_PATH).parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(CLEANED_OUTPUT, DBT_SEED_PATH)
+    print(f"[copy_to_dbt_seed] {CLEANED_OUTPUT} → {DBT_SEED_PATH}")
+
+
 def task_summary(**context) -> None:
     """Affiche un résumé des métriques du pipeline via XCom."""
     ti = context["ti"]
@@ -143,6 +159,25 @@ with DAG(
         python_callable=task_summary,
     )
 
+    copy_to_dbt_seed_task = PythonOperator(
+        task_id="copy_to_dbt_seed",
+        python_callable=task_copy_to_dbt_seed,
+    )
+
+    dbt_seed_task = BashOperator(
+        task_id="dbt_seed",
+        bash_command=f"{DBT_BIN} seed --profiles-dir {DBT_DIR} --project-dir {DBT_DIR}",
+    )
+
+    dbt_run_task = BashOperator(
+        task_id="dbt_run",
+        bash_command=f"{DBT_BIN} run --profiles-dir {DBT_DIR} --project-dir {DBT_DIR}",
+    )
+
     # ── Ordre d'exécution ─────────────────────────────────────────────────────
+    # Branche SQLite (existante)
     load_csv_task >> clean_data_task >> insert_to_db_task >> generate_report_task >> summary_task
+
+    # Branche dbt / DuckDB (parallèle à partir de clean_data)
+    clean_data_task >> copy_to_dbt_seed_task >> dbt_seed_task >> dbt_run_task >> summary_task
 
