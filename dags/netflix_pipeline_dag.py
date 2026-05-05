@@ -57,18 +57,22 @@ def task_load_csv(**context) -> None:
 
 
 def task_clean_data(**context) -> None:
-    """Nettoie les données et les sauvegarde en CSV intermédiaire."""
+    """Nettoie les données et les sauvegarde en CSV intermédiaire horodaté."""
     from pipeline.loader import load_csv
     from pipeline.clean import clean_data
 
-    Path(CLEANED_OUTPUT).parent.mkdir(parents=True, exist_ok=True)
+    ds = context["ds"]  # YYYY-MM-DD
+    base = Path(CLEANED_OUTPUT)
+    cleaned_path = str(base.parent / f"{base.stem}_{ds}{base.suffix}")
+    Path(cleaned_path).parent.mkdir(parents=True, exist_ok=True)
 
     df_raw = load_csv(INPUT_PATH)
     df_cleaned = clean_data(df_raw)
-    df_cleaned.to_csv(CLEANED_OUTPUT, index=False)
+    df_cleaned.to_csv(cleaned_path, index=False)
 
     context["ti"].xcom_push(key="row_count_cleaned", value=len(df_cleaned))
-    print(f"[clean_data] {len(df_cleaned)} lignes nettoyées → {CLEANED_OUTPUT}")
+    context["ti"].xcom_push(key="cleaned_output_path", value=cleaned_path)
+    print(f"[clean_data] {len(df_cleaned)} lignes nettoyées → {cleaned_path}")
 
 
 def task_insert_to_db(**context) -> None:
@@ -76,40 +80,49 @@ def task_insert_to_db(**context) -> None:
     import pandas as pd
     from pipeline.db import insert_to_db
 
+    cleaned_path = context["ti"].xcom_pull(task_ids="clean_data", key="cleaned_output_path")
     Path(DB_PATH).parent.mkdir(parents=True, exist_ok=True)
 
-    df_cleaned = pd.read_csv(CLEANED_OUTPUT)
+    df_cleaned = pd.read_csv(cleaned_path)
     insert_to_db(df_cleaned, DB_PATH, IF_EXISTS)
 
     print(f"[insert_to_db] {len(df_cleaned)} lignes insérées dans {DB_PATH} (mode={IF_EXISTS})")
 
 
 def task_generate_report(**context) -> None:
-    """Génère le rapport JSON et HTML depuis les données nettoyées."""
+    """Génère le rapport JSON et HTML horodatés depuis les données nettoyées."""
     import pandas as pd
     from pipeline.report import generate_report
 
-    Path(REPORT_PATH).parent.mkdir(parents=True, exist_ok=True)
+    ds = context["ds"]
+    cleaned_path = context["ti"].xcom_pull(task_ids="clean_data", key="cleaned_output_path")
+    base = Path(REPORT_PATH)
+    report_path = str(base.parent / f"{base.stem}_{ds}{base.suffix}")
+    Path(report_path).parent.mkdir(parents=True, exist_ok=True)
 
-    df_cleaned = pd.read_csv(CLEANED_OUTPUT)
-    generate_report(df_cleaned, REPORT_PATH)
+    df_cleaned = pd.read_csv(cleaned_path)
+    generate_report(df_cleaned, report_path)
 
-    print(f"[generate_report] Rapport généré → {REPORT_PATH}")
+    context["ti"].xcom_push(key="report_path", value=report_path)
+    print(f"[generate_report] Rapport généré → {report_path}")
 
 
 def task_copy_to_dbt_seed(**context) -> None:
-    """Copie le CSV nettoyé vers dbt/seeds/ pour alimenter le seed dbt."""
+    """Copie le CSV nettoyé horodaté vers dbt/seeds/ pour alimenter le seed dbt."""
     import shutil
+    cleaned_path = context["ti"].xcom_pull(task_ids="clean_data", key="cleaned_output_path")
     Path(DBT_SEED_PATH).parent.mkdir(parents=True, exist_ok=True)
-    shutil.copy2(CLEANED_OUTPUT, DBT_SEED_PATH)
-    print(f"[copy_to_dbt_seed] {CLEANED_OUTPUT} → {DBT_SEED_PATH}")
+    shutil.copy2(cleaned_path, DBT_SEED_PATH)
+    print(f"[copy_to_dbt_seed] {cleaned_path} → {DBT_SEED_PATH}")
 
 
 def task_summary(**context) -> None:
     """Affiche un résumé des métriques du pipeline via XCom."""
     ti = context["ti"]
-    raw     = ti.xcom_pull(task_ids="load_csv",    key="row_count_raw")
-    cleaned = ti.xcom_pull(task_ids="clean_data",  key="row_count_cleaned")
+    raw          = ti.xcom_pull(task_ids="load_csv",        key="row_count_raw")
+    cleaned      = ti.xcom_pull(task_ids="clean_data",     key="row_count_cleaned")
+    cleaned_path = ti.xcom_pull(task_ids="clean_data",     key="cleaned_output_path")
+    report_path  = ti.xcom_pull(task_ids="generate_report", key="report_path")
     dropped = (raw or 0) - (cleaned or 0)
 
     print("=" * 50)
@@ -119,7 +132,8 @@ def task_summary(**context) -> None:
     print(f"  Lignes nettoyées  : {cleaned}")
     print(f"  Lignes supprimées : {dropped}")
     print(f"  Base de données   : {DB_PATH}")
-    print(f"  Rapport           : {REPORT_PATH}")
+    print(f"  CSV nettoyé       : {cleaned_path}")
+    print(f"  Rapport           : {report_path}")
     print("=" * 50)
 
 
