@@ -11,7 +11,7 @@ Structure des tâches :
 import os
 import shutil
 import sys
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from airflow import (DAG)
@@ -61,7 +61,7 @@ def task_clean_data(**context) -> None:
     from pipeline.loader import load_csv
     from pipeline.clean import clean_data
 
-    ds = context["ds"]  # YYYY-MM-DD
+    ds = context.get("ds") or datetime.now(timezone.utc).strftime("%Y-%m-%d")
     base = Path(CLEANED_OUTPUT)
     cleaned_path = str(base.parent / f"{base.stem}_{ds}{base.suffix}")
     Path(cleaned_path).parent.mkdir(parents=True, exist_ok=True)
@@ -94,7 +94,7 @@ def task_generate_report(**context) -> None:
     import pandas as pd
     from pipeline.report import generate_report
 
-    ds = context["ds"]
+    ds = context.get("ds") or datetime.now(timezone.utc).strftime("%Y-%m-%d")
     cleaned_path = context["ti"].xcom_pull(task_ids="clean_data", key="cleaned_output_path")
     base = Path(REPORT_PATH)
     report_path = str(base.parent / f"{base.stem}_{ds}{base.suffix}")
