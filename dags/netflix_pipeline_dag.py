@@ -1,11 +1,11 @@
 """
 DAG Airflow - Pipeline Netflix
 CSV → Nettoyage → SQLite → Rapport JSON/HTML
-                → dbt (DuckDB) seed + run
+                → dbt (DuckDB) seed + snapshot + run
 
 Structure des tâches :
     load_csv >> clean_data >> insert_to_db     >> generate_report >> summary
-                           >> copy_to_dbt_seed >> dbt_seed >> dbt_run ──────┘
+                           >> copy_to_dbt_seed >> dbt_seed >> dbt_snapshot >> dbt_run ──┘
 """
 
 import os
@@ -169,6 +169,11 @@ with DAG(
         bash_command=f"{DBT_BIN} seed --profiles-dir {DBT_DIR} --project-dir {DBT_DIR}",
     )
 
+    dbt_snapshot_task = BashOperator(
+        task_id="dbt_snapshot",
+        bash_command=f"{DBT_BIN} snapshot --profiles-dir {DBT_DIR} --project-dir {DBT_DIR}",
+    )
+
     dbt_run_task = BashOperator(
         task_id="dbt_run",
         bash_command=f"{DBT_BIN} run --profiles-dir {DBT_DIR} --project-dir {DBT_DIR}",
@@ -179,5 +184,5 @@ with DAG(
     load_csv_task >> clean_data_task >> insert_to_db_task >> generate_report_task >> summary_task
 
     # Branche dbt / DuckDB (parallèle à partir de clean_data)
-    clean_data_task >> copy_to_dbt_seed_task >> dbt_seed_task >> dbt_run_task >> summary_task
+    clean_data_task >> copy_to_dbt_seed_task >> dbt_seed_task >> dbt_snapshot_task >> dbt_run_task >> summary_task
 
