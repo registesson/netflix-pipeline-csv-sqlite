@@ -179,10 +179,20 @@ with DAG(
         bash_command=f"{DBT_BIN} run --profiles-dir {DBT_DIR} --project-dir {DBT_DIR}",
     )
 
-    # ── Ordre d'exécution ─────────────────────────────────────────────────────
-    # Branche SQLite (existante)
-    load_csv_task >> clean_data_task >> insert_to_db_task >> generate_report_task >> summary_task
+    # ── Dépendances explicites ────────────────────────────────────────────────
+    load_csv_task.set_downstream(clean_data_task)
 
-    # Branche dbt / DuckDB (parallèle à partir de clean_data)
-    clean_data_task >> copy_to_dbt_seed_task >> dbt_seed_task >> dbt_snapshot_task >> dbt_run_task >> summary_task
+    # clean_data démarre deux branches en parallèle
+    clean_data_task.set_downstream(insert_to_db_task)       # branche SQLite
+    clean_data_task.set_downstream(copy_to_dbt_seed_task)   # branche dbt
+
+    # Branche SQLite
+    insert_to_db_task.set_downstream(generate_report_task)
+    generate_report_task.set_downstream(summary_task)
+
+    # Branche dbt / DuckDB
+    copy_to_dbt_seed_task.set_downstream(dbt_seed_task)
+    dbt_seed_task.set_downstream(dbt_snapshot_task)
+    dbt_snapshot_task.set_downstream(dbt_run_task)
+    dbt_run_task.set_downstream(summary_task)               # convergence vers summary
 
