@@ -4,7 +4,7 @@ CSV → Nettoyage → SQLite → Rapport JSON/HTML
                 → dbt (DuckDB) seed + snapshot + run
 
 Structure des tâches :
-    load_csv >> clean_data >> insert_to_db     >> generate_report >> summary
+    load_csv >> clean_data >> insert_to_db     >> generate_report >> summary >> notify_slack
                            >> copy_to_dbt_seed >> dbt_seed >> dbt_snapshot >> dbt_run ──┘
 """
 
@@ -32,9 +32,11 @@ DB_PATH         = os.getenv("DB_PATH",         str(PROJECT_ROOT / "data"    / "n
 REPORT_PATH     = os.getenv("REPORT_PATH",     str(PROJECT_ROOT / "outputs" / "report.json"))
 IF_EXISTS       = os.getenv("IF_EXISTS",       "replace")
 
-DBT_DIR         = str(PROJECT_ROOT / "dbt")
-DBT_SEED_PATH   = str(PROJECT_ROOT / "dbt" / "seeds" / "netflix_titles.csv")
-DBT_BIN         = shutil.which("dbt") or "dbt"
+DBT_DIR           = str(PROJECT_ROOT / "dbt")
+DBT_SEED_PATH     = str(PROJECT_ROOT / "dbt" / "seeds" / "netflix_titles.csv")
+DBT_BIN           = shutil.which("dbt") or "dbt"
+
+SLACK_WEBHOOK_URL = os.getenv("SLACK_WEBHOOK_URL", "")
 
 # ── Callback d'échec ──────────────────────────────────────────────────────────
 def on_task_failure(context) -> None:
@@ -192,6 +194,60 @@ def task_summary(**context) -> None:
     print("=" * 50)
 
 
+def task_notify_slack(**context) -> None:
+    """Envoie les métriques du pipeline sur Slack via Incoming Webhook."""
+    import requests
+
+    if not SLACK_WEBHOOK_URL:
+        print("[notify_slack] SLACK_WEBHOOK_URL non défini — notification ignorée.")
+        return
+
+    ti = context["ti"]
+    ds           = context.get("ds", "N/A")
+    raw          = ti.xcom_pull(task_ids="load_csv",        key="row_count_raw")
+    cleaned      = ti.xcom_pull(task_ids="clean_data",      key="row_count_cleaned")
+    report_path  = ti.xcom_pull(task_ids="generate_report", key="report_path")
+    dropped      = (raw or 0) - (cleaned or 0)
+
+    failed_tasks = [
+        t.task_id
+        for t in context["dag_run"].get_task_instances()
+        if t.state == "failed" and t.task_id not in ("summary", "notify_slack")
+    ]
+    status_icon = ":x: Échec" if failed_tasks else ":white_check_mark: Succès"
+
+    blocks = [
+        {
+            "type": "header",
+            "text": {"type": "plain_text", "text": f"Pipeline Netflix — {ds}"},
+        },
+        {
+            "type": "section",
+            "fields": [
+                {"type": "mrkdwn", "text": f"*Statut*\n{status_icon}"},
+                {"type": "mrkdwn", "text": f"*Date de run*\n{ds}"},
+                {"type": "mrkdwn", "text": f"*Lignes chargées*\n{raw or 'N/A'}"},
+                {"type": "mrkdwn", "text": f"*Lignes nettoyées*\n{cleaned or 'N/A'}"},
+                {"type": "mrkdwn", "text": f"*Lignes supprimées*\n{dropped}"},
+                {"type": "mrkdwn", "text": f"*Rapport*\n`{report_path or 'N/A'}`"},
+            ],
+        },
+    ]
+
+    if failed_tasks:
+        blocks.append({
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": f"*Tâches en échec* : {', '.join(f'`{t}`' for t in failed_tasks)}",
+            },
+        })
+
+    resp = requests.post(SLACK_WEBHOOK_URL, json={"blocks": blocks}, timeout=10)
+    resp.raise_for_status()
+    print(f"[notify_slack] Notification envoyée (HTTP {resp.status_code})")
+
+
 # ── Définition du DAG ─────────────────────────────────────────────────────────
 with DAG(
     dag_id="netflix_pipeline",
@@ -241,7 +297,15 @@ with DAG(
         python_callable=task_summary,
         retries=0,
         execution_timeout=timedelta(minutes=2),
-        # S'exécute même si une branche en amont a échoué
+        trigger_rule=TriggerRule.ALL_DONE,
+    )
+
+    notify_slack_task = PythonOperator(
+        task_id="notify_slack",
+        python_callable=task_notify_slack,
+        retries=1,
+        retry_delay=timedelta(seconds=30),
+        execution_timeout=timedelta(minutes=2),
         trigger_rule=TriggerRule.ALL_DONE,
     )
 
@@ -293,4 +357,6 @@ with DAG(
     dbt_seed_task.set_downstream(dbt_snapshot_task)
     dbt_snapshot_task.set_downstream(dbt_run_task)
     dbt_run_task.set_downstream(summary_task)               # convergence vers summary
+
+    summary_task.set_downstream(notify_slack_task)
 

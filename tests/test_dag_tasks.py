@@ -225,3 +225,92 @@ def test_copy_to_dbt_seed_copies_file(tmp_path, monkeypatch):
     dag_mod.task_copy_to_dbt_seed(**ctx)
     assert seed_path.exists()
     assert seed_path.read_text() == "title\nA\n"
+
+
+# ── task_notify_slack ────────────────────────────────────────────────────────
+
+def make_notify_context(xcom_values=None, failed_task_ids=None):
+    """Contexte étendu avec dag_run mocké pour task_notify_slack."""
+    ctx = make_context(xcom_values=xcom_values)
+    dag_run = MagicMock()
+    failed = set(failed_task_ids or [])
+
+    def _task_instances():
+        for task_id in ["load_csv", "clean_data", "insert_to_db", "generate_report", "summary"]:
+            ti = MagicMock()
+            ti.task_id = task_id
+            ti.state = "failed" if task_id in failed else "success"
+            yield ti
+
+    dag_run.get_task_instances.side_effect = _task_instances
+    ctx["dag_run"] = dag_run
+    return ctx
+
+
+def test_notify_slack_skips_when_no_webhook(monkeypatch, capsys):
+    monkeypatch.setattr(dag_mod, "SLACK_WEBHOOK_URL", "")
+    dag_mod.task_notify_slack(**make_notify_context())
+    assert "ignorée" in capsys.readouterr().out
+
+
+def test_notify_slack_posts_to_webhook(monkeypatch):
+    monkeypatch.setattr(dag_mod, "SLACK_WEBHOOK_URL", "https://hooks.slack.com/test")
+    ctx = make_notify_context(xcom_values={
+        "row_count_raw": 100,
+        "row_count_cleaned": 95,
+        "report_path": "/outputs/report_2024-01-01.json",
+    })
+    mock_resp = MagicMock(status_code=200)
+    with patch("requests.post", return_value=mock_resp) as mock_post:
+        dag_mod.task_notify_slack(**ctx)
+    mock_post.assert_called_once_with(
+        "https://hooks.slack.com/test",
+        json=mock_post.call_args.kwargs["json"],
+        timeout=10,
+    )
+
+
+def test_notify_slack_success_message_content(monkeypatch):
+    monkeypatch.setattr(dag_mod, "SLACK_WEBHOOK_URL", "https://hooks.slack.com/test")
+    ctx = make_notify_context(xcom_values={
+        "row_count_raw": 100,
+        "row_count_cleaned": 95,
+        "report_path": "/outputs/report_2024-01-01.json",
+    })
+    mock_resp = MagicMock(status_code=200)
+    with patch("requests.post", return_value=mock_resp) as mock_post:
+        dag_mod.task_notify_slack(**ctx)
+
+    blocks = mock_post.call_args.kwargs["json"]["blocks"]
+    assert "Pipeline Netflix — 2024-01-01" in blocks[0]["text"]["text"]
+    fields = [f["text"] for f in blocks[1]["fields"]]
+    assert any(":white_check_mark:" in t for t in fields)
+    assert any("100" in t for t in fields)
+    assert any("95" in t for t in fields)
+    assert len(blocks) == 2  # pas de bloc d'erreur
+
+
+def test_notify_slack_failure_message_includes_failed_tasks(monkeypatch):
+    monkeypatch.setattr(dag_mod, "SLACK_WEBHOOK_URL", "https://hooks.slack.com/test")
+    ctx = make_notify_context(
+        xcom_values={"row_count_raw": 100, "row_count_cleaned": 0, "report_path": None},
+        failed_task_ids=["insert_to_db"],
+    )
+    mock_resp = MagicMock(status_code=200)
+    with patch("requests.post", return_value=mock_resp) as mock_post:
+        dag_mod.task_notify_slack(**ctx)
+
+    blocks = mock_post.call_args.kwargs["json"]["blocks"]
+    fields = [f["text"] for f in blocks[1]["fields"]]
+    assert any(":x:" in t for t in fields)
+    assert len(blocks) == 3
+    assert "`insert_to_db`" in blocks[2]["text"]["text"]
+
+
+def test_notify_slack_raises_on_http_error(monkeypatch):
+    monkeypatch.setattr(dag_mod, "SLACK_WEBHOOK_URL", "https://hooks.slack.com/test")
+    mock_resp = MagicMock()
+    mock_resp.raise_for_status.side_effect = Exception("HTTP 500")
+    with patch("requests.post", return_value=mock_resp):
+        with pytest.raises(Exception, match="HTTP 500"):
+            dag_mod.task_notify_slack(**make_notify_context())
