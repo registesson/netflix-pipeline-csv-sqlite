@@ -192,7 +192,7 @@ Le DAG Airflow `netflix_pipeline` orchestre les mêmes étapes que `main.py` de 
 ### Structure du DAG
 
 ```
-load_csv >> clean_data >> insert_to_db     >> generate_report >> summary
+load_csv >> clean_data >> insert_to_db     >> generate_report >> summary >> notify_slack
                        >> copy_to_dbt_seed >> dbt_seed >> dbt_snapshot >> dbt_run ──┘
 ```
 
@@ -207,6 +207,7 @@ load_csv >> clean_data >> insert_to_db     >> generate_report >> summary
 | `dbt_snapshot` | Applique les snapshots SCD type 2 |
 | `dbt_run` | Exécute les modèles staging et marts |
 | `summary` | Affiche les métriques (XCom) dans les logs |
+| `notify_slack` | Envoie les métriques du pipeline sur Slack via Incoming Webhook |
 
 ### Gestion d'erreur et retries
 
@@ -221,6 +222,7 @@ Chaque tâche a une stratégie de retry et un timeout adaptés à sa nature :
 | `copy_to_dbt_seed` | 2 | 30s | 3 min | |
 | `dbt_seed/snapshot/run` | 2 | 3 min | 15 min | dbt initialise son environnement au démarrage |
 | `summary` | 0 | — | 2 min | `TriggerRule.ALL_DONE` — s'exécute même si une branche échoue |
+| `notify_slack` | 1 | 30s | 2 min | `TriggerRule.ALL_DONE` — notifie même en cas d'échec |
 
 Un `on_failure_callback` est enregistré sur toutes les tâches et loggue le nom du DAG, de la tâche, du run, le numéro d'essai et l'exception à chaque échec.
 
@@ -266,6 +268,7 @@ Interface web : **http://localhost:8080** (login : `admin` / `admin`)
 | `DB_PATH` | `data/netflix.db` |
 | `REPORT_PATH` | `outputs/report.json` |
 | `IF_EXISTS` | `replace` |
+| `SLACK_WEBHOOK_URL` | *(non défini — notification désactivée si absent)* |
 
 ### Exécution manuelle du DAG
 
