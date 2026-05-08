@@ -41,7 +41,7 @@ This project is a learning-oriented ETL pipeline for Netflix titles data with th
 **2. Airflow DAG** (`dags/netflix_pipeline_dag.py`)
 - Orchestrates the same pipeline steps as `main.py` plus a parallel dbt branch.
 - Task graph: `load_csv >> clean_data >> insert_to_db >> generate_report >> summary >> notify_slack` and `clean_data >> copy_to_dbt_seed >> dbt_seed >> dbt_snapshot >> dbt_run >> summary`.
-- `notify_slack` runs with `TriggerRule.ALL_DONE` and posts pipeline metrics (rows loaded/cleaned/dropped, report path, failed tasks) to Slack via `SLACK_WEBHOOK_URL`. Silently skipped if the variable is unset.
+- `notify_slack` runs with `TriggerRule.ALL_DONE` and posts pipeline metrics (rows loaded/cleaned/dropped, report path) to Slack via `SLACK_WEBHOOK_URL`. Silently skipped if the variable is unset. Status is inferred from XComs (no `dag_run.get_task_instances()` — removed in Airflow 3.x).
 - All paths are resolved relative to `PROJECT_ROOT` (parent of `dags/`) so the DAG works regardless of `AIRFLOW_HOME`.
 - Configured daily (`@daily`), `catchup=False`.
 
@@ -54,6 +54,13 @@ This project is a learning-oriented ETL pipeline for Netflix titles data with th
 ## Environment
 
 Copy `.env.example` to `.env`. All five path variables (`INPUT_PATH`, `CLEANED_OUTPUT`, `DB_PATH`, `REPORT_PATH`, `IF_EXISTS`) are read by both `main.py` and the Airflow DAG; CLI flags override env vars. `SLACK_WEBHOOK_URL` is read only by the DAG; if unset, `notify_slack` logs a warning and exits cleanly.
+
+## Airflow 3.x compatibility
+
+- `dag_run.get_task_instances()` no longer exists in Airflow 3.x — do not use it in task callables.
+- The `context["dag_run"]` object is a Pydantic model from the Task SDK; it exposes `dag_id`, `run_id`, `state`, and data interval fields, but no ORM methods.
+- To infer pipeline status from within a task, use XCom values rather than querying task instance states.
+- The `pipeline/` module must be mounted at `/opt/airflow/pipeline` in the Docker setup so `PROJECT_ROOT` (parent of `dags/`) resolves it correctly.
 
 ## Key data contract
 
