@@ -209,12 +209,9 @@ def task_notify_slack(**context) -> None:
     report_path  = ti.xcom_pull(task_ids="generate_report", key="report_path")
     dropped      = (raw or 0) - (cleaned or 0)
 
-    failed_tasks = [
-        t.task_id
-        for t in context["dag_run"].get_task_instances()
-        if t.state == "failed" and t.task_id not in ("summary", "notify_slack")
-    ]
-    status_icon = ":x: Échec" if failed_tasks else ":white_check_mark: Succès"
+    # Heuristique de statut : si les XComs essentiels sont absents, une tâche amont a échoué.
+    pipeline_ok = all([raw, cleaned, report_path])
+    status_icon = ":white_check_mark: Succès" if pipeline_ok else ":x: Échec partiel"
 
     blocks = [
         {
@@ -233,15 +230,6 @@ def task_notify_slack(**context) -> None:
             ],
         },
     ]
-
-    if failed_tasks:
-        blocks.append({
-            "type": "section",
-            "text": {
-                "type": "mrkdwn",
-                "text": f"*Tâches en échec* : {', '.join(f'`{t}`' for t in failed_tasks)}",
-            },
-        })
 
     resp = requests.post(SLACK_WEBHOOK_URL, json={"blocks": blocks}, timeout=10)
     resp.raise_for_status()
