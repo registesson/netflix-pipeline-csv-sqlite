@@ -226,6 +226,12 @@ Chaque tâche a une stratégie de retry et un timeout adaptés à sa nature :
 
 Un `on_failure_callback` est enregistré sur toutes les tâches et loggue le nom du DAG, de la tâche, du run, le numéro d'essai et l'exception à chaque échec.
 
+### Compatibilité Airflow 3.x
+
+- `dag_run.get_task_instances()` n'existe plus dans Airflow 3.x — le statut du pipeline est inféré depuis les XComs (`notify_slack` considère le run en succès si `row_count_raw`, `row_count_cleaned` et `report_path` sont tous présents).
+- `context["dag_run"]` est un modèle Pydantic du Task SDK : il expose `dag_id`, `run_id`, `state` et les champs d'intervalle, mais pas de méthodes ORM.
+- Le module `pipeline/` doit être monté dans le conteneur Docker à `/opt/airflow/pipeline` pour que `PROJECT_ROOT` (parent de `dags/`) le résolve correctement.
+
 ### Installation rapide (Airflow 3.x)
 
 ```bash
