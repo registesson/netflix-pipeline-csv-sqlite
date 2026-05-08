@@ -34,6 +34,7 @@ def test_dag_has_expected_tasks():
     expected = {
         "load_csv", "clean_data", "insert_to_db", "generate_report",
         "summary", "copy_to_dbt_seed", "dbt_seed", "dbt_snapshot", "dbt_run",
+        "notify_slack",
     }
     assert set(dag.task_ids) == expected
 
@@ -49,7 +50,8 @@ def test_dag_has_expected_tasks():
     ("dbt_seed",         {"dbt_snapshot"}),
     ("dbt_snapshot",     {"dbt_run"}),
     ("dbt_run",          {"summary"}),                             # convergence
-    ("summary",          set()),
+    ("summary",          {"notify_slack"}),
+    ("notify_slack",     set()),
 ])
 def test_task_downstream(task_id, expected_downstream):
     assert dag.get_task(task_id).downstream_task_ids == expected_downstream
@@ -67,6 +69,7 @@ def test_task_downstream(task_id, expected_downstream):
     ("dbt_snapshot",     2, timedelta(minutes=3),  timedelta(minutes=15)),
     ("dbt_run",          2, timedelta(minutes=3),  timedelta(minutes=15)),
     ("summary",          0, None,                  timedelta(minutes=2)),
+    ("notify_slack",     1, timedelta(seconds=30), timedelta(minutes=2)),
 ])
 def test_task_retry_and_timeout(task_id, retries, retry_delay, timeout):
     task = dag.get_task(task_id)
@@ -91,13 +94,14 @@ def test_other_tasks_have_no_exponential_backoff():
         )
 
 
-def test_summary_trigger_rule_is_all_done():
-    assert dag.get_task("summary").trigger_rule == TriggerRule.ALL_DONE
+@pytest.mark.parametrize("task_id", ["summary", "notify_slack"])
+def test_all_done_trigger_rule(task_id):
+    assert dag.get_task(task_id).trigger_rule == TriggerRule.ALL_DONE
 
 
 def test_other_tasks_have_default_trigger_rule():
     for task in dag.tasks:
-        if task.task_id == "summary":
+        if task.task_id in ("summary", "notify_slack"):
             continue
         assert task.trigger_rule == TriggerRule.ALL_SUCCESS, (
             f"trigger_rule inattendu sur '{task.task_id}'"
