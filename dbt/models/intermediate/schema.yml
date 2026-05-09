@@ -1,0 +1,92 @@
+version: 2
+
+models:
+  - name: int_netflix_titles_enriched
+    description: >
+      Enriched title-level model derived from stg_netflix_titles.
+      Adds derived columns: country_primary (first country when multi-valued),
+      country_normalized (Unknown when blank), decade, is_recent flag (>= 2015),
+      genre_count, and date_added_year. One row per title.
+    config:
+      meta:
+        owner: "@registesson"
+        domain: "content"
+      tags: ["intermediate", "netflix"]
+    columns:
+      - name: show_id
+        description: "Unique identifier for the title."
+        tests:
+          - not_null
+          - unique
+      - name: title
+        description: "Trimmed title of the Netflix show or movie."
+        tests:
+          - not_null
+      - name: type
+        description: "Content type (Movie or TV Show)."
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['Movie', 'TV Show']
+      - name: country_primary
+        description: "First country when the source field lists multiple comma-separated countries."
+      - name: country_normalized
+        description: "country_primary coalesced to 'Unknown' when blank or null."
+        tests:
+          - not_null
+      - name: release_year
+        description: "Release year cast to integer."
+        tests:
+          - not_null
+      - name: decade
+        description: "Decade the title was released in (e.g. 2020 for 2021–2029)."
+        tests:
+          - not_null
+      - name: is_recent
+        description: "True when release_year >= 2015."
+        tests:
+          - not_null
+      - name: genre_count
+        description: "Number of genres in the listed_in field. Null when listed_in is null."
+      - name: date_added_year
+        description: "Calendar year the title was added to Netflix. Null when date_added is null."
+
+  - name: int_netflix_genres_exploded
+    description: >
+      One row per (title, genre) pair, produced by splitting the listed_in field on commas.
+      Titles with a null listed_in are excluded. country_normalized is resolved from
+      the first country in the multi-valued country field.
+    config:
+      meta:
+        owner: "@registesson"
+        domain: "content"
+      tags: ["intermediate", "netflix"]
+    columns:
+      - name: show_id
+        description: "Identifier of the source title."
+        tests:
+          - not_null
+      - name: title
+        description: "Title of the Netflix show or movie."
+        tests:
+          - not_null
+      - name: type
+        description: "Content type (Movie or TV Show)."
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['Movie', 'TV Show']
+      - name: release_year
+        description: "Release year of the title."
+        tests:
+          - not_null
+      - name: country_normalized
+        description: "Primary country, coalesced to 'Unknown' when blank."
+        tests:
+          - not_null
+      - name: genre
+        description: "Individual genre, trimmed. One row per genre per title."
+        tests:
+          - not_null

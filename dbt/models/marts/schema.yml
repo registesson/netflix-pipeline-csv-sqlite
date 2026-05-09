@@ -1,0 +1,83 @@
+version: 2
+
+models:
+  - name: mart_titles_by_country
+    description: >
+      Aggregated country-level metrics for Netflix titles. One row per country.
+      Sourced from int_netflix_titles_enriched. Includes recent title counts
+      (release_year >= 2015) and average genre count per country.
+      Ordered by total title count descending.
+    config:
+      meta:
+        owner: "@registesson"
+        domain: "content"
+      tags: ["mart", "netflix", "country"]
+    columns:
+      - name: country
+        description: "Country of production (blank values replaced with 'Unknown')."
+        tests:
+          - not_null
+          - unique
+      - name: title_count
+        description: "Total number of titles (movies + TV shows) for this country."
+        tests:
+          - not_null
+      - name: movie_count
+        description: "Number of Movies for this country."
+        tests:
+          - not_null
+      - name: tv_show_count
+        description: "Number of TV Shows for this country."
+        tests:
+          - not_null
+      - name: min_release_year
+        description: "Earliest release year among titles for this country."
+        tests:
+          - not_null
+      - name: max_release_year
+        description: "Most recent release year among titles for this country."
+        tests:
+          - not_null
+      - name: recent_titles_count
+        description: "Number of titles with release_year >= 2015 for this country."
+        tests:
+          - not_null
+      - name: avg_genre_count
+        description: "Average number of genres per title for this country (1 decimal place). Null when listed_in is entirely absent."
+
+  - name: mart_titles_by_genre
+    description: >
+      Aggregated genre-level metrics for Netflix titles. One row per genre.
+      Sourced from int_netflix_genres_exploded (one row per title × genre).
+      Ordered by total title count descending.
+    config:
+      meta:
+        owner: "@registesson"
+        domain: "content"
+      tags: ["mart", "netflix", "genre"]
+    columns:
+      - name: genre
+        description: "Individual genre label as extracted from listed_in."
+        tests:
+          - not_null
+          - unique
+      - name: title_count
+        description: "Total number of (title, genre) pairs for this genre."
+        tests:
+          - not_null
+      - name: movie_count
+        description: "Number of Movies tagged with this genre."
+        tests:
+          - not_null
+      - name: tv_show_count
+        description: "Number of TV Shows tagged with this genre."
+        tests:
+          - not_null
+      - name: min_release_year
+        description: "Earliest release year among titles tagged with this genre."
+        tests:
+          - not_null
+      - name: max_release_year
+        description: "Most recent release year among titles tagged with this genre."
+        tests:
+          - not_null

@@ -1,0 +1,44 @@
+version: 2
+
+models:
+  - name: stg_netflix_titles
+    description: >
+      Staging model that casts and normalizes raw Netflix titles from the seed.
+      Text fields are trimmed, release_year is cast to integer, date_added is
+      cast to timestamp (null if unparseable). Rows with null titles are filtered out.
+    config:
+      meta:
+        owner: "@registesson"
+        domain: "content"
+      tags: ["staging", "netflix"]
+    columns:
+      - name: show_id
+        description: "Unique identifier for the title, cast to varchar."
+        tests:
+          - not_null
+          - unique
+      - name: title
+        description: "Trimmed title of the Netflix show or movie."
+        tests:
+          - not_null
+      - name: type
+        description: "Content type (Movie or TV Show), trimmed."
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['Movie', 'TV Show']
+      - name: country
+        description: "Trimmed country of production. May be empty string if unknown."
+      - name: release_year
+        description: "Release year cast to integer."
+        tests:
+          - not_null
+      - name: date_added
+        description: >
+          Date the title was added to Netflix, cast to timestamp.
+          Null if the source value could not be parsed.
+      - name: listed_in
+        description: "Comma-separated list of genres as provided in the source."
+      - name: description
+        description: "Short synopsis of the title."

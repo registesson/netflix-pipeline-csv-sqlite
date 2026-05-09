@@ -20,8 +20,13 @@ models:
   netflix_pipeline_dbt:
     staging:
       +materialized: view
+      +tags: ["staging"]
+    intermediate:
+      +materialized: view
+      +tags: ["intermediate"]
     marts:
       +materialized: table
+      +tags: ["mart"]
 
 seeds:
   netflix_pipeline_dbt:
