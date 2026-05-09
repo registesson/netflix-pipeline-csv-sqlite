@@ -24,8 +24,8 @@ pytest tests/test_clean.py::test_clean_data_basic  # single test
 # Or step by step:
 cd dbt && export DBT_PROFILES_DIR=$(pwd)
 dbt seed --full-refresh
-dbt run --select stg_netflix_titles mart_titles_by_country
-dbt test --select stg_netflix_titles mart_titles_by_country
+dbt run --select stg_netflix_titles int_netflix_titles_enriched int_netflix_genres_exploded mart_titles_by_country mart_titles_by_genre
+dbt test --select stg_netflix_titles int_netflix_titles_enriched int_netflix_genres_exploded mart_titles_by_country mart_titles_by_genre
 ```
 
 ## Architecture
@@ -47,8 +47,14 @@ This project is a learning-oriented ETL pipeline for Netflix titles data with th
 
 **3. dbt / DuckDB path** (`dbt/`)
 - Reads from `dbt/seeds/netflix_titles.csv` (populated by `main.py --cleaned-output dbt/seeds/netflix_titles.csv` or the Airflow `copy_to_dbt_seed` task).
-- `staging/stg_netflix_titles` (view): normalizes/casts seed data.
-- `marts/mart_titles_by_country` (table): country-level aggregates for reporting.
+- Three-layer architecture: `staging → intermediate → marts`.
+- `staging/stg_netflix_titles` (view): casts and trims raw seed data; filters null titles.
+- `intermediate/int_netflix_titles_enriched` (view): adds `country_normalized` (first country, Unknown if blank), `decade`, `is_recent` (release_year ≥ 2015), `genre_count`, `date_added_year`. One row per title.
+- `intermediate/int_netflix_genres_exploded` (view): unnests `listed_in` → one row per (title, genre) pair via DuckDB `unnest(string_split(...))`.
+- `marts/mart_titles_by_country` (table): country-level aggregates sourced from `int_netflix_titles_enriched`; includes `recent_titles_count` and `avg_genre_count`.
+- `marts/mart_titles_by_genre` (table): genre-level aggregates sourced from `int_netflix_genres_exploded`.
+- Schema docs split by layer: `models/staging/schema.yml`, `models/intermediate/schema.yml`, `models/marts/schema.yml`. Seeds documented in `models/schema.yml`.
+- Singular tests: `test_stg_release_year_range`, `test_int_decade_multiple`, `test_int_genre_row_count`, `test_mart_country_counts_consistent`, `test_mart_genre_counts_consistent`.
 - Profile uses a local DuckDB file (`data/netflix.duckdb`); `DBT_PROFILES_DIR` must point to `dbt/` when running locally.
 
 ## Environment
