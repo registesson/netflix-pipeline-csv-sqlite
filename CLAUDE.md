@@ -24,8 +24,8 @@ pytest tests/test_clean.py::test_clean_data_basic  # single test
 # Or step by step:
 cd dbt && export DBT_PROFILES_DIR=$(pwd)
 dbt seed --full-refresh
-dbt run --select stg_netflix_titles int_netflix_titles_enriched int_netflix_genres_exploded mart_titles_by_country mart_titles_by_genre
-dbt test --select stg_netflix_titles int_netflix_titles_enriched int_netflix_genres_exploded mart_titles_by_country mart_titles_by_genre
+dbt run --select stg_netflix_titles int_netflix_titles_enriched int_netflix_genres_exploded mart_titles_by_country mart_titles_by_genre mart_titles_by_decade
+dbt test --select stg_netflix_titles int_netflix_titles_enriched int_netflix_genres_exploded mart_titles_by_country mart_titles_by_genre mart_titles_by_decade
 ```
 
 ## Architecture
@@ -53,8 +53,9 @@ This project is a learning-oriented ETL pipeline for Netflix titles data with th
 - `intermediate/int_netflix_genres_exploded` (view): unnests `listed_in` → one row per (title, genre) pair via DuckDB `unnest(string_split(...))`.
 - `marts/mart_titles_by_country` (table): country-level aggregates sourced from `int_netflix_titles_enriched`; includes `recent_titles_count` and `avg_genre_count`.
 - `marts/mart_titles_by_genre` (table): genre-level aggregates sourced from `int_netflix_genres_exploded`.
+- `marts/mart_titles_by_decade` (table): decade-level aggregates sourced from `int_netflix_titles_enriched`; includes `title_count`, `movie_count`, `tv_show_count`, `country_count`, `avg_genre_count`. Ordered by decade descending.
 - Schema docs split by layer: `models/staging/schema.yml`, `models/intermediate/schema.yml`, `models/marts/schema.yml`. Seeds documented in `models/schema.yml`.
-- Singular tests: `test_stg_release_year_range`, `test_int_decade_multiple`, `test_int_genre_row_count`, `test_mart_country_counts_consistent`, `test_mart_genre_counts_consistent`.
+- Singular tests: `test_stg_release_year_range`, `test_int_decade_multiple`, `test_int_genre_row_count`, `test_mart_country_counts_consistent`, `test_mart_genre_counts_consistent`, `test_mart_decade_counts_consistent`.
 - Profile uses a local DuckDB file (`data/netflix.duckdb`); `DBT_PROFILES_DIR` must point to `dbt/` when running locally.
 
 ## Environment
