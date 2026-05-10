@@ -81,3 +81,37 @@ models:
         description: "Most recent release year among titles tagged with this genre."
         tests:
           - not_null
+
+  - name: mart_titles_by_decade
+    description: >
+      Aggregated decade-level metrics for Netflix titles. One row per decade.
+      Sourced from int_netflix_titles_enriched. Ordered by decade descending.
+    config:
+      meta:
+        owner: "@registesson"
+        domain: "content"
+      tags: ["mart", "netflix", "decade"]
+    columns:
+      - name: decade
+        description: "Decade of release (e.g. 2020 for titles released in 2020–2029)."
+        tests:
+          - not_null
+          - unique
+      - name: title_count
+        description: "Total number of titles released in this decade."
+        tests:
+          - not_null
+      - name: movie_count
+        description: "Number of Movies released in this decade."
+        tests:
+          - not_null
+      - name: tv_show_count
+        description: "Number of TV Shows released in this decade."
+        tests:
+          - not_null
+      - name: country_count
+        description: "Number of distinct countries represented in this decade."
+        tests:
+          - not_null
+      - name: avg_genre_count
+        description: "Average number of genres per title in this decade (1 decimal place)."
