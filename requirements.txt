@@ -3,5 +3,8 @@ pandera>=0.18.0
 python-dotenv>=1.0.0
 jinja2>=3.1.0
 pytest>=8.0.0
+streamlit>=1.57.0
+duckdb>=1.5.2
+plotly>=6.7.0
 
 apache-airflow
