@@ -187,7 +187,7 @@ docker compose up -d
 
 `depends_on` garantit l'ordre : postgres démarre en premier, `airflow-init` migre la DB et crée le compte admin, puis webserver et scheduler démarrent.
 
-Interface web : **http://localhost:8080** — login `admin` / `admin`.
+Interface web : **http://localhost:8088** — login `admin` / `admin`.
 
 ```bash
 # Déclencher le DAG manuellement
@@ -440,7 +440,7 @@ export AIRFLOW_HOME=$(pwd)/.airflow
 airflow scheduler
 ```
 
-Interface web : **http://localhost:8080** (login : `admin` / `admin`)
+Interface web : **http://localhost:8088** (login : `admin` / `admin`)
 
 ### Variables d'environnement configurables
 
