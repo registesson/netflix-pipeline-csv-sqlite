@@ -128,6 +128,83 @@ dbt/seeds/netflix_titles.csv  ◀── populated by main.py or copy_to_dbt_seed
 └─────────────────────┘   └──────────────────┘   └──────────────────────┘
 ```
 
+## Lancer le projet
+
+Trois chemins d'exécution, du plus simple au plus complet :
+
+| Chemin | Prérequis | Ce que ça lance |
+|---|---|---|
+| Pipeline Python | Python 3.9+ | ETL CSV → SQLite + rapports |
+| dbt local | Python + dbt-duckdb | Modèles DuckDB (staging → marts) |
+| Airflow (Docker) | Docker + Docker Compose | DAG orchestré + branche dbt |
+
+### Pipeline Python local
+
+```bash
+git clone https://github.com/registesson/netflix-pipeline-csv-sqlite.git
+cd netflix-pipeline-csv-sqlite
+
+pip install -r requirements.txt
+cp .env.example .env          # ajuste les chemins si besoin
+
+python main.py
+```
+
+Outputs générés : `data/netflix.db`, `outputs/cleaned_data.csv`, `outputs/report.json`, `outputs/report.html`.
+
+### dbt local (DuckDB)
+
+```bash
+pip install -r requirements-dbt.txt
+
+# Alimente les seeds depuis le pipeline Python
+python main.py --cleaned-output dbt/seeds/netflix_titles.csv
+
+# Lance seed + run + test en une commande
+./scripts/run_dbt_local.sh
+```
+
+Ou étape par étape :
+
+```bash
+cd dbt && export DBT_PROFILES_DIR=$(pwd)
+dbt seed --full-refresh
+dbt run
+dbt test
+```
+
+### Airflow — Docker Compose
+
+**Prérequis :** Docker Desktop (ou Docker Engine + Compose v2).
+
+```bash
+# 1. Build de l'image (inclut les dépendances pipeline)
+docker compose build
+
+# 2. Init : migration DB + création du compte admin
+docker compose up airflow-init
+
+# 3. Démarrage des services
+docker compose up -d webserver scheduler
+```
+
+Interface web : **http://localhost:8080** — login `admin` / `admin`.
+
+```bash
+# Déclencher le DAG manuellement
+docker compose exec webserver airflow dags trigger netflix_pipeline
+
+# Suivre les logs du scheduler en temps réel
+docker compose logs -f scheduler
+
+# Arrêter proprement
+docker compose down
+```
+
+Pour activer les notifications Slack, ajoute `SLACK_WEBHOOK_URL` dans `docker-compose.yml` ou décommente la ligne prévue à cet effet.
+
+> **Note :** les dossiers `data/`, `outputs/`, `dbt/` sont montés en volume — les fichiers générés par Airflow restent disponibles localement.
+
 ## Setup
 
 1. **Clone the repository**
