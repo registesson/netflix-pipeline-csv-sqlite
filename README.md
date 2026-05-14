@@ -63,6 +63,71 @@ data-pipeline-csv-sqlite/
     └── setup_airflow.sh      # Installation et configuration d'Apache Airflow
 ```
 
+## Architecture
+
+Three execution paths share the same `pipeline/` modules.
+
+### 1. Core Python Pipeline
+
+```
+data/netflix_titles.csv
+         │
+         ▼
+  ┌─────────────┐
+  │  loader.py  │  CSV → pandas DataFrame
+  └──────┬──────┘
+         │
+         ▼
+  ┌─────────────┐
+  │   clean.py  │  Validate columns · parse dates · deduplicate · pandera schema
+  └──────┬──────┘
+         │
+    ┌────┴────────────┐
+    ▼                 ▼
+┌────────┐    ┌─────────────┐
+│ db.py  │    │  report.py  │
+│        │    │             │
+│SQLite  │    │ report.json │
+│  .db   │    │ report.html │
+└────────┘    └─────────────┘
+```
+
+### 2. Airflow DAG (`@daily`, Airflow 3.x)
+
+```
+                     ┌──────────────────────────────────────────────┐
+load_csv ──▶ clean_data ──▶ insert_to_db ──▶ generate_report ──┐   │
+                  │                                              ├──▶ summary ──▶ notify_slack
+                  └──▶ copy_to_dbt_seed ──▶ dbt_seed ──▶ dbt_run ──┘
+                                                (DuckDB)
+```
+
+Status is inferred from XComs (no ORM calls — Airflow 3.x compatible). `notify_slack` runs with `TriggerRule.ALL_DONE` and is silently skipped if `SLACK_WEBHOOK_URL` is unset.
+
+### 3. dbt Layers (DuckDB)
+
+```
+dbt/seeds/netflix_titles.csv  ◀── populated by main.py or copy_to_dbt_seed
+         │
+         ▼  staging (views)
+┌──────────────────────────┐
+│   stg_netflix_titles     │  cast types · trim whitespace · filter null titles
+└──────────────┬───────────┘
+               │
+               ▼  intermediate (views)
+┌──────────────────────────────┬──────────────────────────────────┐
+│ int_netflix_titles_enriched  │   int_netflix_genres_exploded    │
+│ country_normalized · decade  │   one row per (title, genre)     │
+│ is_recent · genre_count      │   via DuckDB unnest()            │
+└──────────────┬───────────────┴────────────────┬─────────────────┘
+               │                                 │
+               ▼  marts (tables)                 ▼
+┌─────────────────────┐   ┌──────────────────┐   ┌──────────────────────┐
+│ mart_titles_by_     │   │ mart_titles_by_  │   │  mart_titles_by_     │
+│ country             │   │ genre            │   │  decade              │
+└─────────────────────┘   └──────────────────┘   └──────────────────────┘
+```
+
 ## Setup
 
 1. **Clone the repository**
