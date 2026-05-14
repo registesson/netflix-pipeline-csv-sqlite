@@ -211,36 +211,72 @@ Or run the one-command helper:
 
 ## dbt Models
 
-- `stg_netflix_titles`: normalization and type casting from seed data.
-- `mart_titles_by_country`: country-level metrics for analytics/dashboarding.
-- `schema.yml`: basic dbt tests (`not_null`, `accepted_values`, `unique`).
+Three-layer architecture backed by DuckDB. Schema files are split per layer: `models/staging/schema.yml`, `models/intermediate/schema.yml`, `models/marts/schema.yml`.
 
-### dbt Tests Added
+### Staging — `models/staging/`
 
-Recent changes reinforced data quality checks at both staging and mart layers.
+| Model | Materialization | Description |
+|---|---|---|
+| `stg_netflix_titles` | view | Casts types, trims text, filters rows with null titles |
 
-- Generic tests in `dbt/models/schema.yml`:
-  - `stg_netflix_titles.show_id`: `not_null`, `unique`
-  - `stg_netflix_titles.type`: `not_null`, `accepted_values` (`Movie`, `TV Show`)
-  - `stg_netflix_titles.release_year`: `not_null`
-  - `mart_titles_by_country.country`: `not_null`, `unique`
-  - `mart_titles_by_country.title_count`, `movie_count`, `tv_show_count`, `min_release_year`, `max_release_year`: `not_null`
+Key columns: `show_id`, `title`, `type`, `country`, `release_year`, `date_added` (timestamp), `listed_in`, `description`.
 
-- Singular SQL tests in `dbt/tests/`:
-  - `test_stg_release_year_range.sql`: flags rows where `release_year` is outside an expected range (`< 1900` or `> current_year + 1`)
-  - `test_mart_country_counts_consistent.sql`: flags rows where `title_count != movie_count + tv_show_count` or `min_release_year > max_release_year`
+### Intermediate — `models/intermediate/`
 
-Run only the impacted models and tests:
+| Model | Materialization | Description |
+|---|---|---|
+| `int_netflix_titles_enriched` | view | One row per title — adds `country_normalized`, `decade`, `is_recent`, `genre_count`, `date_added_year` |
+| `int_netflix_genres_exploded` | view | One row per (title, genre) pair — unnests `listed_in` via DuckDB `unnest(string_split(...))` |
+
+### Marts — `models/marts/`
+
+| Model | Materialization | Grain | Key metrics |
+|---|---|---|---|
+| `mart_titles_by_country` | table | One row per country | `title_count`, `movie_count`, `tv_show_count`, `recent_titles_count`, `avg_genre_count`, `min/max_release_year` |
+| `mart_titles_by_genre` | table | One row per genre | `title_count`, `movie_count`, `tv_show_count`, `min/max_release_year` |
+| `mart_titles_by_decade` | table | One row per decade | `title_count`, `movie_count`, `tv_show_count`, `country_count`, `avg_genre_count` |
+
+### dbt Tests
+
+**Generic tests** (defined in `schema.yml` per layer):
+
+| Model | Column | Tests |
+|---|---|---|
+| `stg_netflix_titles` | `show_id` | `not_null`, `unique` |
+| | `title`, `type`, `release_year` | `not_null` |
+| | `type` | `accepted_values` (`Movie`, `TV Show`) |
+| `int_netflix_titles_enriched` | `show_id` | `not_null`, `unique` |
+| | `title`, `type`, `release_year`, `country_normalized`, `decade`, `is_recent` | `not_null` |
+| | `type` | `accepted_values` (`Movie`, `TV Show`) |
+| `int_netflix_genres_exploded` | `show_id`, `title`, `type`, `release_year`, `country_normalized`, `genre` | `not_null` |
+| | `type` | `accepted_values` (`Movie`, `TV Show`) |
+| `mart_titles_by_country` | `country` | `not_null`, `unique` |
+| | `title_count`, `movie_count`, `tv_show_count`, `recent_titles_count`, `min/max_release_year` | `not_null` |
+| `mart_titles_by_genre` | `genre` | `not_null`, `unique` |
+| | `title_count`, `movie_count`, `tv_show_count`, `min/max_release_year` | `not_null` |
+| `mart_titles_by_decade` | `decade` | `not_null`, `unique` |
+| | `title_count`, `movie_count`, `tv_show_count`, `country_count` | `not_null` |
+
+**Singular tests** (`dbt/tests/`):
+
+| File | What it checks |
+|---|---|
+| `test_stg_release_year_range.sql` | `release_year` outside `[1900, current_year + 1]` |
+| `test_int_decade_multiple.sql` | `decade` is a multiple of 10 |
+| `test_int_genre_row_count.sql` | exploded row count ≥ staging row count |
+| `test_mart_country_counts_consistent.sql` | `title_count = movie_count + tv_show_count` and `min_release_year ≤ max_release_year` |
+| `test_mart_genre_counts_consistent.sql` | same consistency check at genre level |
+| `test_mart_decade_counts_consistent.sql` | same consistency check at decade level |
+
+Run all models and tests:
 
 ```bash
 cd dbt
 export DBT_PROFILES_DIR=$(pwd)
 dbt seed --full-refresh
-dbt run --select stg_netflix_titles mart_titles_by_country
-dbt test --select stg_netflix_titles mart_titles_by_country
+dbt run --select stg_netflix_titles int_netflix_titles_enriched int_netflix_genres_exploded mart_titles_by_country mart_titles_by_genre mart_titles_by_decade
+dbt test --select stg_netflix_titles int_netflix_titles_enriched int_netflix_genres_exploded mart_titles_by_country mart_titles_by_genre mart_titles_by_decade
 ```
-
-Expected result: all selected tests pass and `dbt test` exits with code `0`.
 
 ## Example Queries
 
