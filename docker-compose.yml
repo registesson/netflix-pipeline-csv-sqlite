@@ -42,18 +42,17 @@ services:
 
   airflow-init:
     <<: *airflow-common
-    entrypoint: /bin/bash
+    entrypoint: ["bash", "-c"]
     command:
-      - -c
       - |
-        airflow db migrate
+        airflow db migrate &&
         airflow users create \
           --username admin \
           --password admin \
           --firstname Admin \
           --lastname Netflix \
           --role Admin \
-          --email admin@example.com || true
+          --email admin@example.com 2>/dev/null || true
     restart: on-failure
     depends_on:
       postgres:

@@ -181,12 +181,11 @@ dbt test
 # 1. Build de l'image (inclut les dépendances pipeline)
 docker compose build
 
-# 2. Init : migration DB + création du compte admin
-docker compose up airflow-init
-
-# 3. Démarrage des services
-docker compose up -d webserver scheduler
+# 2. Démarrage complet (postgres → init → webserver + scheduler)
+docker compose up -d
 ```
+
+`depends_on` garantit l'ordre : postgres démarre en premier, `airflow-init` migre la DB et crée le compte admin, puis webserver et scheduler démarrent.
 
 Interface web : **http://localhost:8080** — login `admin` / `admin`.
 
