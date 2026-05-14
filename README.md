@@ -1,6 +1,32 @@
 # Data Pipeline: CSV to SQLite with Reporting
 
+## Table of Contents
+
+- [Overview](#overview)
+- [Project Structure](#project-structure)
+- [Architecture](#architecture)
+- [Quick Start](#quick-start)
+  - [Python Pipeline (local)](#python-pipeline-local)
+  - [dbt (local, DuckDB)](#dbt-local-duckdb)
+  - [Airflow via Docker Compose](#airflow-via-docker-compose)
+- [Usage](#usage)
+- [Pipeline Steps](#pipeline-steps)
+- [dbt Models](#dbt-models)
+- [Example Queries](#example-queries)
+- [Apache Airflow](#apache-airflow)
+  - [DAG Overview](#dag-overview)
+  - [Error Handling & Retries](#error-handling--retries)
+  - [Airflow 3.x Compatibility](#airflow-3x-compatibility)
+  - [Local Setup (without Docker)](#local-setup-without-docker)
+  - [Environment Variables](#environment-variables)
+  - [Triggering the DAG Manually](#triggering-the-dag-manually)
+- [Tests](#tests)
+- [Requirements](#requirements)
+- [Customization](#customization)
+- [License](#license)
+
 ## Overview
+
 This project provides a simple data pipeline that:
 - Loads Netflix titles data from a CSV file
 - Cleans and preprocesses the data
@@ -18,10 +44,12 @@ data-pipeline-csv-sqlite/
 ├── requirements.txt          # Core Python dependencies for the pipeline
 ├── requirements-dbt.txt      # Optional dependencies for dbt (local learning)
 ├── requirements-airflow.txt  # Optional dependencies for Apache Airflow
+├── Dockerfile                # Extends apache/airflow:3.0.0 with pipeline deps
+├── docker-compose.yml        # Airflow stack: postgres + init + webserver + scheduler
 ├── README.md                 # Project documentation
 │
 ├── dags/
-│   └── netflix_pipeline_dag.py   # DAG Airflow (CSV → SQLite + dbt → Rapport)
+│   └── netflix_pipeline_dag.py   # Airflow DAG (CSV → SQLite + dbt → Report)
 │
 ├── data/
 │   ├── netflix_titles.csv    # Raw input data (CSV)
@@ -54,13 +82,17 @@ data-pipeline-csv-sqlite/
 │   └── models/
 │       ├── staging/
 │       │   └── stg_netflix_titles.sql
-│       ├── marts/
-│       │   └── mart_titles_by_country.sql
-│       └── schema.yml        # dbt tests and model documentation
+│       ├── intermediate/
+│       │   ├── int_netflix_titles_enriched.sql
+│       │   └── int_netflix_genres_exploded.sql
+│       └── marts/
+│           ├── mart_titles_by_country.sql
+│           ├── mart_titles_by_genre.sql
+│           └── mart_titles_by_decade.sql
 │
 └── scripts/
-    ├── run_dbt_local.sh      # Tiny runner: pipeline -> dbt seed/run/test
-    └── setup_airflow.sh      # Installation et configuration d'Apache Airflow
+    ├── run_dbt_local.sh      # One-command runner: pipeline → dbt seed/run/test
+    └── setup_airflow.sh      # Apache Airflow installation and configuration
 ```
 
 ## Architecture
@@ -128,43 +160,43 @@ dbt/seeds/netflix_titles.csv  ◀── populated by main.py or copy_to_dbt_seed
 └─────────────────────┘   └──────────────────┘   └──────────────────────┘
 ```
 
-## Lancer le projet
+## Quick Start
 
-Trois chemins d'exécution, du plus simple au plus complet :
+Three execution paths, from simplest to most complete:
 
-| Chemin | Prérequis | Ce que ça lance |
+| Path | Prerequisites | What it runs |
 |---|---|---|
-| Pipeline Python | Python 3.9+ | ETL CSV → SQLite + rapports |
-| dbt local | Python + dbt-duckdb | Modèles DuckDB (staging → marts) |
-| Airflow (Docker) | Docker + Docker Compose | DAG orchestré + branche dbt |
+| Python pipeline | Python 3.9+ | ETL CSV → SQLite + reports |
+| dbt (local) | Python + dbt-duckdb | DuckDB models (staging → marts) |
+| Airflow (Docker) | Docker + Docker Compose | Orchestrated DAG + dbt branch |
 
-### Pipeline Python local
+### Python Pipeline (local)
 
 ```bash
 git clone https://github.com/registesson/netflix-pipeline-csv-sqlite.git
 cd netflix-pipeline-csv-sqlite
 
 pip install -r requirements.txt
-cp .env.example .env          # ajuste les chemins si besoin
+cp .env.example .env          # adjust paths if needed
 
 python main.py
 ```
 
-Outputs générés : `data/netflix.db`, `outputs/cleaned_data.csv`, `outputs/report.json`, `outputs/report.html`.
+Outputs: `data/netflix.db`, `outputs/cleaned_data.csv`, `outputs/report.json`, `outputs/report.html`.
 
-### dbt local (DuckDB)
+### dbt (local, DuckDB)
 
 ```bash
 pip install -r requirements-dbt.txt
 
-# Alimente les seeds depuis le pipeline Python
+# Populate seeds from the Python pipeline
 python main.py --cleaned-output dbt/seeds/netflix_titles.csv
 
-# Lance seed + run + test en une commande
+# Run seed + run + test in one command
 ./scripts/run_dbt_local.sh
 ```
 
-Ou étape par étape :
+Or step by step:
 
 ```bash
 cd dbt && export DBT_PROFILES_DIR=$(pwd)
@@ -173,94 +205,45 @@ dbt run
 dbt test
 ```
 
-### Airflow — Docker Compose
+### Airflow via Docker Compose
 
-**Prérequis :** Docker Desktop (ou Docker Engine + Compose v2).
+**Prerequisites:** Docker Desktop (or Docker Engine + Compose v2).
 
 ```bash
-# 1. Build de l'image (inclut les dépendances pipeline)
+# 1. Build the image (includes pipeline dependencies)
 docker compose build
 
-# 2. Démarrage complet (postgres → init → webserver + scheduler)
+# 2. Start all services (postgres → init → webserver + scheduler)
 docker compose up -d
 ```
 
-`depends_on` garantit l'ordre : postgres démarre en premier, `airflow-init` migre la DB et crée le compte admin, puis webserver et scheduler démarrent.
+`depends_on` ensures the correct startup order: postgres first, then `airflow-init` (DB migration + admin account creation), then webserver and scheduler.
 
-Interface web : **http://localhost:8088** — login `admin` / `admin`.
+Web UI: **http://localhost:8088** — login `admin` / `admin`.
 
 ```bash
-# Déclencher le DAG manuellement
+# Trigger the DAG manually
 docker compose exec webserver airflow dags trigger netflix_pipeline
 
-# Suivre les logs du scheduler en temps réel
+# Stream scheduler logs
 docker compose logs -f scheduler
 
-# Arrêter proprement
+# Stop all services
 docker compose down
 ```
 
-Pour activer les notifications Slack, ajoute `SLACK_WEBHOOK_URL` dans `docker-compose.yml` ou décommente la ligne prévue à cet effet.
+To enable Slack notifications, uncomment `SLACK_WEBHOOK_URL` in `docker-compose.yml` and set your webhook URL.
 
-> **Note :** les dossiers `data/`, `outputs/`, `dbt/` sont montés en volume — les fichiers générés par Airflow restent disponibles localement.
-
-## Setup
-
-1. **Clone the repository**
-2. **Install dependencies**:
-   ```bash
-   pip install -r requirements.txt
-   ```
-3. **(Optional) Install dbt dependencies for learning**:
-   ```bash
-   pip install -r requirements-dbt.txt
-   ```
-4. **Place your input CSV** in the `data/` directory (default: `netflix_titles.csv`).
+> **Note:** `data/`, `outputs/`, and `dbt/` are bind-mounted — files generated inside Airflow containers are immediately available on the host.
 
 ## Usage
 
-Run the pipeline with:
-```bash
-python main.py
-```
+Run with optional flags and custom paths:
 
-Run with optional examples and custom paths:
 ```bash
 python main.py --show-examples
 python main.py --if-exists append
 python main.py --input data/netflix_titles.csv --cleaned-output outputs/cleaned_data.csv --db data/netflix.db --report outputs/report.json
-```
-
-This will:
-- Load the CSV data
-- Clean and preprocess it
-- Save the cleaned data to `outputs/cleaned_data.csv`
-- Insert the cleaned data into `data/netflix.db` (SQLite)
-- Generate summary reports at `outputs/report.json` and `outputs/report.html`
-
-## dbt Learning Quickstart (DuckDB)
-
-Generate a cleaned file directly into dbt seeds:
-
-```bash
-python main.py --cleaned-output dbt/seeds/netflix_titles.csv
-```
-
-Run dbt locally with the project profile:
-
-```bash
-cd dbt
-export DBT_PROFILES_DIR=$(pwd)
-dbt debug
-dbt seed --full-refresh
-dbt run
-dbt test
-```
-
-Or run the one-command helper:
-
-```bash
-./scripts/run_dbt_local.sh
 ```
 
 ## Pipeline Steps
@@ -362,54 +345,54 @@ The pipeline demonstrates how to run example queries on the SQLite database, suc
 - Movies from 2020 onwards
 - Count of titles from Japan
 
-## Apache Airflow — Orchestration du pipeline
+## Apache Airflow
 
-Le DAG Airflow `netflix_pipeline` orchestre les mêmes étapes que `main.py` de façon planifiée et reproductible, avec une branche dbt en parallèle.
+The `netflix_pipeline` DAG orchestrates the same steps as `main.py` on a daily schedule, with a parallel dbt branch.
 
-### Structure du DAG
+### DAG Overview
 
 ```
 load_csv >> clean_data >> insert_to_db     >> generate_report >> summary >> notify_slack
                        >> copy_to_dbt_seed >> dbt_seed >> dbt_snapshot >> dbt_run ──┘
 ```
 
-| Tâche | Description |
+| Task | Description |
 |---|---|
-| `load_csv` | Vérifie et charge le CSV source |
-| `clean_data` | Nettoie les données et sauvegarde un CSV horodaté |
-| `insert_to_db` | Insère dans SQLite avec mode `IF_EXISTS` configurable |
-| `generate_report` | Génère le rapport JSON et HTML horodatés |
-| `copy_to_dbt_seed` | Copie le CSV nettoyé vers `dbt/seeds/` |
-| `dbt_seed` | Charge les seeds dans DuckDB |
-| `dbt_snapshot` | Applique les snapshots SCD type 2 |
-| `dbt_run` | Exécute les modèles staging et marts |
-| `summary` | Affiche les métriques (XCom) dans les logs |
-| `notify_slack` | Envoie les métriques du pipeline sur Slack via Incoming Webhook |
+| `load_csv` | Validates and loads the source CSV |
+| `clean_data` | Cleans data and saves a timestamped CSV |
+| `insert_to_db` | Inserts into SQLite with configurable `IF_EXISTS` mode |
+| `generate_report` | Generates timestamped JSON and HTML reports |
+| `copy_to_dbt_seed` | Copies the cleaned CSV to `dbt/seeds/` |
+| `dbt_seed` | Loads seeds into DuckDB |
+| `dbt_snapshot` | Applies SCD type 2 snapshots |
+| `dbt_run` | Runs staging and mart models |
+| `summary` | Logs pipeline metrics from XComs |
+| `notify_slack` | Posts pipeline metrics to Slack via Incoming Webhook |
 
-### Gestion d'erreur et retries
+### Error Handling & Retries
 
-Chaque tâche a une stratégie de retry et un timeout adaptés à sa nature :
+Each task has a retry strategy and timeout tailored to its nature:
 
-| Tâche | Retries | Retry delay | Timeout | Notes |
+| Task | Retries | Retry delay | Timeout | Notes |
 |---|---|---|---|---|
-| `load_csv` | 2 | 30s | 5 min | Fichier potentiellement pas encore disponible |
-| `clean_data` | 1 | 1 min | 10 min | Déterministe, retry peu utile |
-| `insert_to_db` | 3 | 2 min (exponentiel) | 10 min | Absorbe les contentions SQLite |
+| `load_csv` | 2 | 30s | 5 min | Source file may not be available yet |
+| `clean_data` | 1 | 1 min | 10 min | Deterministic — retries rarely help |
+| `insert_to_db` | 3 | 2 min (exponential) | 10 min | Absorbs SQLite lock contention |
 | `generate_report` | 2 | 1 min | 5 min | |
 | `copy_to_dbt_seed` | 2 | 30s | 3 min | |
-| `dbt_seed/snapshot/run` | 2 | 3 min | 15 min | dbt initialise son environnement au démarrage |
-| `summary` | 0 | — | 2 min | `TriggerRule.ALL_DONE` — s'exécute même si une branche échoue |
-| `notify_slack` | 1 | 30s | 2 min | `TriggerRule.ALL_DONE` — notifie même en cas d'échec |
+| `dbt_seed/snapshot/run` | 2 | 3 min | 15 min | dbt initializes its environment on startup |
+| `summary` | 0 | — | 2 min | `TriggerRule.ALL_DONE` — runs even if a branch fails |
+| `notify_slack` | 1 | 30s | 2 min | `TriggerRule.ALL_DONE` — notifies even on failure |
 
-Un `on_failure_callback` est enregistré sur toutes les tâches et loggue le nom du DAG, de la tâche, du run, le numéro d'essai et l'exception à chaque échec.
+An `on_failure_callback` is registered on all tasks and logs the DAG name, task, run ID, attempt number, and exception on each failure.
 
-### Compatibilité Airflow 3.x
+### Airflow 3.x Compatibility
 
-- `dag_run.get_task_instances()` n'existe plus dans Airflow 3.x — le statut du pipeline est inféré depuis les XComs (`notify_slack` considère le run en succès si `row_count_raw`, `row_count_cleaned` et `report_path` sont tous présents).
-- `context["dag_run"]` est un modèle Pydantic du Task SDK : il expose `dag_id`, `run_id`, `state` et les champs d'intervalle, mais pas de méthodes ORM.
-- Le module `pipeline/` doit être monté dans le conteneur Docker à `/opt/airflow/pipeline` pour que `PROJECT_ROOT` (parent de `dags/`) le résolve correctement.
+- `dag_run.get_task_instances()` no longer exists in Airflow 3.x — pipeline status is inferred from XComs (`notify_slack` considers the run successful if `row_count_raw`, `row_count_cleaned`, and `report_path` are all present).
+- `context["dag_run"]` is a Pydantic model from the Task SDK: it exposes `dag_id`, `run_id`, `state`, and data interval fields, but no ORM methods.
+- The `pipeline/` module must be mounted at `/opt/airflow/pipeline` in the Docker container so that `PROJECT_ROOT` (parent of `dags/`) resolves it correctly.
 
-### Installation rapide (Airflow 3.x)
+### Local Setup (without Docker)
 
 ```bash
 pip install -r requirements-airflow.txt
@@ -420,15 +403,13 @@ airflow users create --username admin --password admin \
     --firstname Admin --lastname Netflix --role Admin --email admin@example.com
 ```
 
-Ou utiliser le script tout-en-un :
+Or use the one-command helper:
 
 ```bash
 ./scripts/setup_airflow.sh
 ```
 
-### Démarrage
-
-Dans deux terminaux distincts :
+In two separate terminals:
 
 ```bash
 # Terminal 1 — Webserver
@@ -440,20 +421,20 @@ export AIRFLOW_HOME=$(pwd)/.airflow
 airflow scheduler
 ```
 
-Interface web : **http://localhost:8088** (login : `admin` / `admin`)
+Web UI: **http://localhost:8080** (login: `admin` / `admin`)
 
-### Variables d'environnement configurables
+### Environment Variables
 
-| Variable | Valeur par défaut |
+| Variable | Default value |
 |---|---|
 | `INPUT_PATH` | `data/netflix_titles.csv` |
 | `CLEANED_OUTPUT` | `outputs/cleaned_data.csv` |
 | `DB_PATH` | `data/netflix.db` |
 | `REPORT_PATH` | `outputs/report.json` |
 | `IF_EXISTS` | `replace` |
-| `SLACK_WEBHOOK_URL` | *(non défini — notification désactivée si absent)* |
+| `SLACK_WEBHOOK_URL` | *(unset — notification silently skipped)* |
 
-### Exécution manuelle du DAG
+### Triggering the DAG Manually
 
 ```bash
 export AIRFLOW_HOME=$(pwd)/.airflow
@@ -463,30 +444,33 @@ airflow dags trigger netflix_pipeline
 ## Tests
 
 ```bash
-pytest          # tous les tests
-pytest -v       # avec détail par test
+pytest      # run all tests
+pytest -v   # verbose output
 ```
 
-| Fichier | Ce qui est testé |
+| File | What it tests |
 |---|---|
-| `test_loader.py` | Chargement CSV |
-| `test_clean.py` | Nettoyage des données |
-| `test_report.py` | Génération des rapports |
-| `test_dag_tasks.py` | Callables du DAG : erreurs métier, validation XCom, happy paths |
-| `test_dag_structure.py` | Structure du DAG : graphe de dépendances, retries, timeouts, callbacks |
+| `test_loader.py` | CSV loading |
+| `test_clean.py` | Data cleaning |
+| `test_report.py` | Report generation |
+| `test_dag_tasks.py` | DAG task callables: business errors, XCom validation, happy paths |
+| `test_dag_structure.py` | DAG structure: dependency graph, retries, timeouts, callbacks |
 
-Les tests du DAG ne nécessitent pas d'infrastructure Airflow : les callables sont appelés directement avec un contexte mocké, les variables de chemin sont surchargées via `monkeypatch`.
+DAG tests do not require an Airflow infrastructure: callables are invoked directly with a mocked context, and path variables are overridden via `monkeypatch`.
 
 ## Requirements
+
 - Python 3.9+
 - pandas >= 2.0.0
 - Optional dbt track: dbt-core + dbt-duckdb
 - Optional Airflow track: apache-airflow >= 3.0.0
 
 ## Customization
+
 - To use a different input file, use `--input` in `main.py`.
 - To add more cleaning steps, edit `pipeline/clean.py`.
 - To extend reporting, modify `pipeline/report.py`.
 
 ## License
+
 MIT License
