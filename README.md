@@ -340,11 +340,21 @@ dbt test --select stg_netflix_titles int_netflix_titles_enriched int_netflix_gen
 
 ## Example Queries
 
-The pipeline demonstrates how to run example queries on the SQLite database, such as:
-- All movies from 2020
-- Titles and their types
-- Movies from 2020 onwards
-- Count of titles from Japan
+Run with `python main.py --show-examples` to execute these queries against the SQLite database:
+
+```sql
+-- All titles from 2020
+SELECT * FROM netflix_titles WHERE release_year = 2020;
+
+-- Titles and their types
+SELECT title, type FROM netflix_titles;
+
+-- Movies released from 2020 onwards
+SELECT * FROM netflix_titles WHERE type = 'Movie' AND release_year >= 2020;
+
+-- Count of titles from Japan
+SELECT COUNT(*) AS n FROM netflix_titles WHERE country = 'Japan';
+```
 
 ## Apache Airflow
 
