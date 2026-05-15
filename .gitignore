@@ -8,6 +8,15 @@ data/netflix.db
 data/netflix.duckdb
 outputs/
 
+# Fichiers d'exercices personnels
+app.py
+gross_pay.py
+max_min.py
+score_grade.py
+NOTES.md
+session_14_04.sql
+logs/
+
 dbt/target/
 dbt/logs/
 dbt/dbt_packages/

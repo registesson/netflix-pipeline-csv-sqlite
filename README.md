@@ -128,10 +128,10 @@ data/netflix_titles.csv
 
 ```
                      ┌──────────────────────────────────────────────┐
-load_csv ──▶ clean_data ──▶ insert_to_db ──▶ generate_report ──┐   │
-                  │                                              ├──▶ summary ──▶ notify_slack
-                  └──▶ copy_to_dbt_seed ──▶ dbt_seed ──▶ dbt_run ──┘
-                                                (DuckDB)
+load_csv ──▶ clean_data ──▶ insert_to_db ──▶ generate_report ──────────────┐
+                  │                                                           ├──▶ summary ──▶ notify_slack
+                  └──▶ copy_to_dbt_seed ──▶ dbt_seed ──▶ dbt_snapshot ──▶ dbt_run ──┘
+                                                         (DuckDB)
 ```
 
 Status is inferred from XComs (no ORM calls — Airflow 3.x compatible). `notify_slack` runs with `TriggerRule.ALL_DONE` and is silently skipped if `SLACK_WEBHOOK_URL` is unset.
