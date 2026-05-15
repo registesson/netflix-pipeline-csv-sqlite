@@ -201,8 +201,8 @@ Or step by step:
 ```bash
 cd dbt && export DBT_PROFILES_DIR=$(pwd)
 dbt seed --full-refresh
-dbt run
-dbt test
+dbt run --select stg_netflix_titles int_netflix_titles_enriched int_netflix_genres_exploded mart_titles_by_country mart_titles_by_genre mart_titles_by_decade
+dbt test --select stg_netflix_titles int_netflix_titles_enriched int_netflix_genres_exploded mart_titles_by_country mart_titles_by_genre mart_titles_by_decade
 ```
 
 ### Airflow via Docker Compose
@@ -251,10 +251,11 @@ python main.py --input data/netflix_titles.csv --cleaned-output outputs/cleaned_
 1. **Loading** (`pipeline/loader.py`)
    - Loads the CSV into a pandas DataFrame.
 2. **Cleaning** (`pipeline/clean.py`)
+   - Validates required columns before processing (raises `ValueError` if missing)
    - Drops rows without a title
    - Parses `date_added` as datetime
-   - Validates required columns before processing
    - Removes duplicates based on `title` and `date_added`
+   - Validates types and value ranges via a `pandera` schema (errors logged as warnings — non-fatal)
 3. **Database Insertion** (`pipeline/db.py`)
    - Inserts the cleaned DataFrame into a SQLite database (`netflix_titles` table)
    - Supports `--if-exists` mode: `replace`, `append`, or `fail`
