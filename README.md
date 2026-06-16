@@ -1,4 +1,4 @@
-# # Netflix Data Pipeline — Python · dbt · Airflow · Streamlit 
+# # Netflix Data Pipeline — Python · dbt · Airflow · Streamlit ![Tests](https://github.com/registesson/netflix-pipeline-csv-sqlite/actions/workflows/tests.yml/badge.svg)
 
 ## Table of Contents
 
