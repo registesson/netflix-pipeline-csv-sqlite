@@ -1,4 +1,4 @@
-# Data Pipeline: CSV to SQLite with Reporting
+# Data Pipeline: CSV to SQLite with Reporting ![Tests](https://github.com/registesson/netflix-pipeline-csv-sqlite/actions/workflows/tests.yml/badge.svg)
 
 ## Table of Contents
 
