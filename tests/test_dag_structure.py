@@ -8,6 +8,8 @@ et les comportements spéciaux — sans exécuter de run Airflow.
 from datetime import timedelta
 
 import pytest
+
+pytest.importorskip("airflow")
 from airflow.utils.trigger_rule import TriggerRule
 
 import netflix_pipeline_dag as dag_mod

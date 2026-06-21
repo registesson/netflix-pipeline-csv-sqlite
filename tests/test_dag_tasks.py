@@ -12,6 +12,7 @@ import pytest
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+pytest.importorskip("airflow")
 import netflix_pipeline_dag as dag_mod
 
 
