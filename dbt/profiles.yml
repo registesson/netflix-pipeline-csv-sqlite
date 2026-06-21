@@ -3,6 +3,6 @@ netflix_pipeline_dbt:
   outputs:
     dev:
       type: duckdb
-      path: "{{ env_var('DBT_DUCKDB_PATH') }}"
+      path: "{{ env_var('DBT_DUCKDB_PATH', '../data/netflix.duckdb') }}"
       threads: 2
 
